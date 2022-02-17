@@ -1,0 +1,11 @@
+node_modules
+
+#Hardhat files
+cache
+artifacts
+factories
+
+.env
+.vscode
+typechain
+README_dev.md
