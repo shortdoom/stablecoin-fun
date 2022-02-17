@@ -9,7 +9,6 @@ import { NetworkUserConfig } from "hardhat/types";
 import "@nomiclabs/hardhat-waffle";
 import "@typechain/hardhat";
 import "@nomiclabs/hardhat-ethers";
-import "@nomiclabs/hardhat-waffle";
 
 import "hardhat-gas-reporter";
 import "@nomiclabs/hardhat-etherscan";
@@ -28,10 +27,7 @@ const MNEMONIC = process.env.MNEMONIC || "";
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || "";
 const INFURA_API_KEY = process.env.INFURA_API_KEY || "";
 const ALCHEMY_KEY = process.env.ALCHEMY_KEY || "";
-const MAINNET_PK = process.env.MAINNET_DEPLOYER_PRIVATE_KEY || "";
 
-// This is a sample Hardhat task. To learn how to create your own go to
-// https://hardhat.org/guides/create-task.html
 task("accounts", "Prints the list of accounts", async (args, hre) => {
   const accounts = await hre.ethers.getSigners();
 
@@ -41,14 +37,6 @@ task("accounts", "Prints the list of accounts", async (args, hre) => {
 });
 
 function createTestnetConfig(network: keyof typeof chainIds): NetworkUserConfig {
-  if (network === "mainnet") {
-    const url: string = "https://eth-mainnet.alchemyapi.io/v2/" + ALCHEMY_KEY;;
-    return {
-      accounts: [MAINNET_PK],
-      chainId: chainIds[network],
-      url,
-    };
-  } else {
     const url: string = "https://" + network + ".infura.io/v3/" + INFURA_API_KEY;
     return {
       accounts: {
@@ -61,7 +49,6 @@ function createTestnetConfig(network: keyof typeof chainIds): NetworkUserConfig 
       url,
     };
   }
-}
 
 // Setting all .env variables before running hardhat is required!
 
@@ -98,7 +85,7 @@ const config: HardhatUserConfig = {
   gasReporter: {
     currency: "USD",
     gasPrice: 100,
-    // enabled: process.env.REPORT_GAS ? true : false,
+    enabled: process.env.REPORT_GAS ? true : false,
   },
   typechain: {
     outDir: "typechain",

@@ -1,18 +1,16 @@
-# Solidity Template
+# Stablecoin Notes
 
-Uses
+Architecture notes:
 
-- [Hardhat](https://github.com/nomiclabs/hardhat): compile and run the smart contracts on a local development network
-- [TypeChain](https://github.com/ethereum-ts/TypeChain): generate TypeScript types for smart contracts
-- [Ethers](https://github.com/ethers-io/ethers.js/): renowned Ethereum library and wallet implementation
-- [Waffle](https://github.com/EthWorks/Waffle): tooling for writing comprehensive smart contract tests
-- [Solhint](https://github.com/protofire/solhint): linter
-- [Prettier Plugin Solidity](https://github.com/prettier-solidity/prettier-plugin-solidity): code formatter
+There are three routes to build stablecoin using 4626.
 
-This is a GitHub template, which means you can reuse it as many times as you want. You can do that by clicking the "Use this
-template" button at the top of the page.
+1. Break interface and build two-token vault with shares used as volatility/funding token. Suprisingly, interface MUST enforce singular underlying for uniformity.
+2. Keep single underlying token (reserve) assumption and extend 4626 with fund/defund functions, operating on volatility token separately (Eg. USM stablecoin)
+3. Build two Vaults, for stable and volatility token each. Build router between two Vaults, connecting through previewFunctions.
 
 ## Usage
+
+Set `.env` and run `npx hardhat node` then `npx hardhat run scripts/StableVault.ts --network localhost`
 
 ### Pre Requisites
 
