@@ -47,92 +47,83 @@ contract StableVault is ERC20, IERC4626 {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Stablecoin
-    function deposit(uint256 amount, address to) public override returns (uint256 stableCoinAmount) {
-        require((stableCoinAmount = previewDeposit(amount)) != 0, "ZERO_SHARES");
-        weth.transferFrom(msg.sender, address(this), amount);
-        totalFloat += amount;
-
+    /// Give WETH amount, get STABLE amount
+    function deposit(uint256 wethIn, address to) public override returns (uint256 stableCoinAmount) {
+        require((stableCoinAmount = previewDeposit(wethIn)) != 0, "ZERO_SHARES");
+        require(weth.transferFrom(msg.sender, address(this), wethIn));
+        totalFloat += wethIn;
         _mint(to, stableCoinAmount);
-        emit Deposit(msg.sender, to, amount, stableCoinAmount);
+        emit Deposit(msg.sender, to, wethIn, stableCoinAmount);
     }
 
     /// @notice Stablecoin
+    /// Mint specific AMOUNT OF STABLE by giving WETH
+    function mint(uint256 stableCoinAmount, address to) public override returns (uint256 wethIn) {
+        require(weth.transfer(address(this), wethIn = previewMint(stableCoinAmount)));
+        _mint(to, stableCoinAmount);
+        totalFloat += wethIn;
+        emit Deposit(msg.sender, to, wethIn, stableCoinAmount);
+    }
+
+    /// @notice Stablecoin
+    /// Withdraw from Vault underlying. Amount of WETH by burning equivalent amount of STABLECOIN
     function withdraw(
+        uint256 amountReserve,
+        address to,
+        address from
+    ) public override returns (uint256 wethOut) {
+        uint256 allowed = allowance[from][msg.sender];
+        if (msg.sender != from && allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amountReserve;
+        wethOut = previewWithdraw(amountReserve); // Calc wethOut for given amount of WETH
+        _burn(from, amountReserve); // burn this vault token i.e minted stablecoins
+        totalFloat -= wethOut; // remove collateral from pool
+        emit Withdraw(from, to, amountReserve, wethOut);
+        weth.transferFrom(address(this), msg.sender, wethOut);
+    }
+
+    /// @notice Stablecoin
+    /// Redeem from Vault underlying. (WETH) equivalent to AMOUNTSTABLE
+    function redeem(
         uint256 amountStable,
         address to,
         address from
     ) public override returns (uint256 wethOut) {
         uint256 allowed = allowance[from][msg.sender];
         if (msg.sender != from && allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amountStable;
-
+        require((wethOut = previewRedeem(amountStable)) != 0, "ZERO_ASSETS");
+        wethOut = previewRedeem(amountStable);
         _burn(from, amountStable);
-        wethOut = previewWithdraw(amountStable); // Calc wethOut for given amountStable
         totalFloat -= wethOut;
-
-        emit Withdraw(from, to, amountStable, wethOut);
-
-        weth.transferFrom(address(this), msg.sender, wethOut); // 0 approve earlier
-
-        return wethOut;
-    }
-
-    /// @notice Stablecoin
-    function previewDeposit(uint256 amount) public view override returns (uint256 stableCoinAmount) {
-        uint256 latest = uint256(getLatestPrice());
-        return (latest / 1e8) * amount; // (ETH/USD) * AMOUNT
-    }
-
-    /// @notice Stablecoin
-    function previewWithdraw(uint256 amount) public view override returns (uint256 shares) {
-        uint256 latest = uint256(getLatestPrice());
-        return totalSupply == 0 ? amount : amount / (latest / 1e8); // AMOUNT / (ETH/USD)
-    }
-
-    /// @notice Volatility token
-    function mint(uint256 amount, address to) public override returns (uint256 volCoinAmount) {
-        weth.transfer(address(this), amount);
-        volatile.mint(to, volCoinAmount = previewMint(amount));
-        totalFloat += amount;
-        emit Deposit(msg.sender, to, volCoinAmount, amount);
-    }
-
-    /// @notice Volatility token
-    function redeem(
-        uint256 amountVolCoin,
-        address to,
-        address from
-    ) public override returns (uint256 wethOut) {
-        uint256 allowed = volatile.allowance(from, msg.sender);
-
-        /// You cant set allowance from this contract on external contract
-        /// That's why Vault should only operate on underlying (add fund/defund funcs for volatile)
-        /// External contract changing allowance
-        if (msg.sender != from && allowed != type(uint256).max) {
-            volatile.setAllowance(from, msg.sender, (allowed - amountVolCoin));
-        }
-        require((wethOut = previewRedeem(amountVolCoin)) != 0, "ZERO_ASSETS");
-
-        wethOut = previewRedeem(amountVolCoin);
-        _burn(from, amountVolCoin);
-        totalFloat -= wethOut;
-
-        emit Withdraw(from, to, wethOut, amountVolCoin);
-
+        emit Withdraw(from, to, wethOut, amountStable);
         weth.transferFrom(address(this), msg.sender, wethOut);
     }
 
-    /// @notice Volatility token
-    function previewMint(uint256 amount) public view override returns (uint256 volCoinAmount) {
-        uint256 latest = uint256(getLatestPrice());
-        return (latest / 1e8) * amount; // (ETH/USD) * AMOUNT, SAME AS DEPOSIT
+    function fund(uint256 amount, address to) public returns (uint256 stableVaultShares) {}
+
+    function defund(uint256 shares, address to, address from) public returns (uint256 wethOut) {}
+
+    /// @notice Stablecoin
+    /// Return how much STABLECOIN does user receive for AMOUNT of WETH
+    function previewDeposit(uint256 amount) public view override returns (uint256 stableCoinAmount) {
+        return (getLatestPrice() / 1e8) * amount; // (ETH/USD) * AMOUNT
     }
 
-    /// @notice Volatility token
-    // Funding tranches, lock from redeem
-    // Allow to withdraw from all pool share
-    // Accrue interests
-    function previewRedeem(uint256 amount) public view override returns (uint256 amounts) {
-        return totalSupply == 0 ? amount : amount.mulDivDown(totalAssets(), totalSupply);
+    /// @notice Stablecoin
+    /// Return how much WETH is needed to receive AMOUNT of STABLECOIN
+    function previewMint(uint256 amount) public view override returns (uint256 stableCoinAmount) {
+        return amount / (getLatestPrice() / 1e8); // AMOUNT / (ETH/USD)
+    }
+
+    /// @notice Stablecoin
+    /// Return how much WETH to transfer by calculating equivalent amount of burn to given AMOUNT of WETH
+    function previewWithdraw(uint256 amount) public view override returns (uint256 wethOut) {
+        return (getLatestPrice() / 1e8) * amount; // AMOUNT / (ETH/USD)
+    }
+
+    /// @notice Stablecoin
+    /// Return how much WETH to transfer equivalent to given AMOUNT of STABLECOIN
+    function previewRedeem(uint256 amount) public view override returns (uint256 wethOut) {
+        return amount / (getLatestPrice() / 1e8); // AMOUNT / (ETH/USD)
     }
 
     /*///////////////////////////////////////////////////////////////
@@ -183,10 +174,10 @@ contract StableVault is ERC20, IERC4626 {
         return balanceOf[user];
     }
 
-    function getLatestPrice() public view returns (int256) {
+    function getLatestPrice() public view returns (uint256) {
         (uint80 roundID, int256 price, uint256 startedAt, uint256 timeStamp, uint80 answeredInRound) = priceFeed
             .latestRoundData();
-        return price;
+        return uint256(price);
     }
 
     /*///////////////////////////////////////////////////////////////
