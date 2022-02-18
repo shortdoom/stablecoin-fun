@@ -98,9 +98,38 @@ contract StableVault is ERC20, IERC4626 {
         weth.transferFrom(address(this), msg.sender, wethOut);
     }
 
-    function fund(uint256 amount, address to) public returns (uint256 stableVaultShares) {}
+    /// @notice Volatility/Funding token
+    /// Give amount of WETH, receive VolatilityToken
+    function fund(uint256 volCoinAmount, address to) public returns (uint256 wethIn) {
+        require(weth.transferFrom(msg.sender, address(this), wethIn = previewFund(volCoinAmount)));
+        volatile.mint(to, volCoinAmount);
+        totalFloat += wethIn;
+        emit Deposit(msg.sender, to, wethIn, volCoinAmount); // Change event 
+    }
 
-    function defund(uint256 shares, address to, address from) public returns (uint256 wethOut) {}
+    /// @notice Volatility/Funding token
+    /// Redeem number of SHARES (VolToken) for WETH as current price (at loss or profit)
+    function defund(uint256 volCoinAmount, address to, address from) public returns (uint256 wethOut) {
+        require((wethOut = previewDefund(volCoinAmount)) != 0, "ZERO_ASSETS");
+        volatile.burn(to, volCoinAmount);
+        totalFloat -= wethOut;
+    }
+
+    function previewFund(uint256 amount) public view returns (uint256 stableVaultShares) {
+        return amount / (getLatestPrice() / 1e8); // AMOUNT / (ETH/USD)
+    }
+
+    /// @notice Volatility token
+    /// The only function that claims yield from totalFloat
+    /// Claim ALL profits of Vault.
+    function previewDefund(uint256 amount) public view returns (uint256 wethOut) {
+        // minFloat / maxFloat == when hitting minFloat > increase funding???
+        // calc ratio if all minted STABLE is redeemable with current ETH price
+        totalAssets(); // all WETH in Vault (VOL+STABLE)
+        volatile.totalSupply; // all VOL minted
+        totalSupply; // all STABLE minted
+    }
+
 
     /// @notice Stablecoin
     /// Return how much STABLECOIN does user receive for AMOUNT of WETH
