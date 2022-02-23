@@ -1,4 +1,5 @@
 node_modules
+bin
 
 #Hardhat files
 cache
@@ -9,5 +10,3 @@ factories
 .vscode
 typechain
 README_dev.md
-
-bin
