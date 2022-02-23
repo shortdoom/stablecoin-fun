@@ -16,16 +16,24 @@ async function main(): Promise<void> {
   signers = await ethers.getSigners();
 
   const weth = new Contract(WETH_ADDRESS, WETH_DEPOSIT, deployer);
-  // await weth.deposit({value:BIG_AMOUNT});
   
   for (let i = 0; i < signers.length; i++) {
     weth.connect(signers[i]);
     await weth.deposit({value:BIG_AMOUNT});
   }
+
+  async function mineBlocks() {
+    for (let index = 0; index < 500; index++) {
+      // console.log("mining block", index);
+      await ethers.provider.send("evm_mine", []);
+    }
+  }
   
   await deployVault();
   await mintFirstStable();
   await mintMultipleStable();
+  await mintFunding();
+  await defunding();
 
   async function showBalances(user: SignerWithAddress) {
       const totalAssets = await vaultContract.totalAssets();
@@ -51,12 +59,28 @@ async function main(): Promise<void> {
       weth.connect(signers[i]);
       await weth.approve(vaultContract.address, WAD_AMOUNT);
       await vaultContract.deposit(WAD_AMOUNT, signers[i].address);
+      // await showBalances(signers[i]);
+    }
+    // await mineBlocks();
+  }
+
+  async function mintFunding() {
+    const volCoinAmount = ethers.utils.parseEther("3000");
+    for (let i = 2; i < signers.length; i++) {
+      const wethIn = await vaultContract.previewFund(volCoinAmount);
+      weth.connect(signers[i]);
+      await weth.approve(vaultContract.address, wethIn);
+      await vaultContract.fund(volCoinAmount, signers[i].address);
       await showBalances(signers[i]);
     }
   }
 
-  async function mintFunding() {
-
+  async function defunding() {
+    const volCoinAmount = ethers.utils.parseEther("3000");
+    for (let i = 2; i < signers.length; i++) {
+      const wethOut = await vaultContract.previewDefund(volCoinAmount);
+      console.log("Defund amount", ethers.utils.formatUnits(wethOut, "ether"));
+    }
   }
 
 }

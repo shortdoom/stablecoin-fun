@@ -1,12 +1,18 @@
-# Stablecoin Notes
+# Primitive Stablecoin
 
-Architecture notes:
+Based HEAVILY on job done by https://github.com/usmfum/USM team. This is vulnerable and not usable in production version of USM stablecoin. Utilizes same mint<>fund logic with two tokens, where minters sell risk and funders buy risk. Bascially, you should read through series of brillant medium articles written by @jacob-eliosoff explaining how minimalistic stablecoin is build.
 
-There are three routes to build stablecoin using 4626.
+Proposed implementation strips all of the useful and usable mechanics of minimal stablecoin to present most primitive blueprint of it (If you still had problems, like me, to wrap your head around USM, it may help to see it's core functions through EIP-4626). It translates core functionality of USM to ERC-4626 previewFunctions and demonstrates how one can use newly proposed standard to build their own stable currency.
+
+# Stablecoin-4626 Notes
+
+There are three easy/obvious routes to build stablecoin using 4626.
 
 1. Break interface and build two-token vault with shares used as volatility/funding token. Suprisingly, interface MUST enforce singular underlying for uniformity.
 2. Keep single underlying token (reserve) assumption and extend 4626 with fund/defund functions, operating on volatility token separately (Eg. USM stablecoin)
 3. Build two Vaults, for stable and volatility token each. Build router between two Vaults, connecting through previewFunctions.
+
+This project chooses to keep ERC-4626 expected behavior (Route no. 2).
 
 ## Usage
 

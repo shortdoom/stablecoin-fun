@@ -17,9 +17,4 @@ contract VolatileToken is ERC20 {
     function burn(address from, uint256 amount) external {
         _burn(from, amount);
     }
-
-    /// @notice Access Control here
-    function setAllowance(address src, address dst, uint256 wad) external {
-        allowance[src][dst] = wad;
-    }
 }
