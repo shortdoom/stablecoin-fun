@@ -17,7 +17,7 @@ import "hardhat/console.sol";
 /// Deposit, Withdraw, Mint, Redeem exists for Stable
 /// Fund & Defund exists for Volatility
 /// All reserve asset accounting (WETH) is done inside of Stable Vault.
-/// Preserve 4626 expected interface (eg vault mint/burn operatin on one underlying)
+/// Preserve 4626 expected interface (eg vault mint/burn operating on one underlying)
 
 error NoEthSupplied();
 
@@ -25,8 +25,9 @@ contract StableVault is ERC20, IERC4626 {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
 
-    uint256 public totalFloat;
-    uint256 public constant MAX_DEBT_RATIO = (1e18 * 8) / 10; // 80%
+    uint256 public constant minFloat = 12000; // 120%
+    uint256 public constant maxFloat = 10000; // 100%
+    uint256 public volatilityBuffer;
 
     VolatileToken public immutable volatile;
     IWETH9 public immutable weth;
@@ -51,7 +52,6 @@ contract StableVault is ERC20, IERC4626 {
     function deposit(uint256 wethIn, address to) public override returns (uint256 stableCoinAmount) {
         require((stableCoinAmount = previewDeposit(wethIn)) != 0, "ZERO_SHARES");
         require(weth.transferFrom(msg.sender, address(this), wethIn));
-        totalFloat += wethIn;
         _mint(to, stableCoinAmount);
         emit Deposit(msg.sender, to, wethIn, stableCoinAmount);
     }
@@ -59,9 +59,8 @@ contract StableVault is ERC20, IERC4626 {
     /// @notice Stablecoin
     /// Mint specific AMOUNT OF STABLE by giving WETH
     function mint(uint256 stableCoinAmount, address to) public override returns (uint256 wethIn) {
-        require(weth.transfer(address(this), wethIn = previewMint(stableCoinAmount)));
+        require(weth.transferFrom(msg.sender, address(this), wethIn = previewMint(stableCoinAmount)));
         _mint(to, stableCoinAmount);
-        totalFloat += wethIn;
         emit Deposit(msg.sender, to, wethIn, stableCoinAmount);
     }
 
@@ -76,7 +75,6 @@ contract StableVault is ERC20, IERC4626 {
         if (msg.sender != from && allowed != type(uint256).max) allowance[from][msg.sender] = allowed - amountReserve;
         wethOut = previewWithdraw(amountReserve); // Calc wethOut for given amount of WETH
         _burn(from, amountReserve); // burn this vault token i.e minted stablecoins
-        totalFloat -= wethOut; // remove collateral from pool
         emit Withdraw(from, to, amountReserve, wethOut);
         weth.transferFrom(address(this), msg.sender, wethOut);
     }
@@ -93,7 +91,6 @@ contract StableVault is ERC20, IERC4626 {
         require((wethOut = previewRedeem(amountStable)) != 0, "ZERO_ASSETS");
         wethOut = previewRedeem(amountStable);
         _burn(from, amountStable);
-        totalFloat -= wethOut;
         emit Withdraw(from, to, wethOut, amountStable);
         weth.transferFrom(address(this), msg.sender, wethOut);
     }
@@ -103,16 +100,22 @@ contract StableVault is ERC20, IERC4626 {
     function fund(uint256 volCoinAmount, address to) public returns (uint256 wethIn) {
         require(weth.transferFrom(msg.sender, address(this), wethIn = previewFund(volCoinAmount)));
         volatile.mint(to, volCoinAmount);
-        totalFloat += wethIn;
-        emit Deposit(msg.sender, to, wethIn, volCoinAmount); // Change event 
+        volatilityBuffer += wethIn;
+        emit Deposit(msg.sender, to, wethIn, volCoinAmount); // Change event
     }
 
     /// @notice Volatility/Funding token
     /// Redeem number of SHARES (VolToken) for WETH as current price (at loss or profit)
-    function defund(uint256 volCoinAmount, address to, address from) public returns (uint256 wethOut) {
+    function defund(
+        uint256 volCoinAmount,
+        address to,
+        address from
+    ) public returns (uint256 wethOut) {
         require((wethOut = previewDefund(volCoinAmount)) != 0, "ZERO_ASSETS");
         volatile.burn(to, volCoinAmount);
-        totalFloat -= wethOut;
+        volatilityBuffer -= wethOut;
+        weth.transferFrom(address(this), msg.sender, wethOut);
+        emit Withdraw(from, to, wethOut, volCoinAmount);
     }
 
     function previewFund(uint256 amount) public view returns (uint256 stableVaultShares) {
@@ -120,16 +123,20 @@ contract StableVault is ERC20, IERC4626 {
     }
 
     /// @notice Volatility token
-    /// The only function that claims yield from totalFloat
-    /// Claim ALL profits of Vault.
+    /// The only function that claims yield from Vault
+    /// https://jacob-eliosoff.medium.com/a-cheesy-analogy-for-people-who-find-usm-confusing-1fd5e3d73a79
     function previewDefund(uint256 amount) public view returns (uint256 wethOut) {
-        // minFloat / maxFloat == when hitting minFloat > increase funding???
-        // calc ratio if all minted STABLE is redeemable with current ETH price
-        totalAssets(); // all WETH in Vault (VOL+STABLE)
-        volatile.totalSupply; // all VOL minted
-        totalSupply; // all STABLE minted
+        uint256 sharesGrowth = amount * ((volatilityBuffer * getLatestPrice()) / volatile.totalSupply());
+        wethOut = sharesGrowth / (getLatestPrice() / 1e8);
+        // return amount * ((totalAssets() * (getLatestPrice() / 1e8)) / totalSupply);
     }
 
+    /// @notice How much at max can be redeemed to keep 120% WETH over current all minted STABLE
+    function freeFloat() public view returns (uint256) {
+        uint256 totalCollateralValue = totalAssets() * getLatestPrice(); // USD value of reserve
+        if (totalCollateralValue >= (totalSupply * minFloat)) {}
+        return (totalAssets() * minFloat) / maxFloat;
+    }
 
     /// @notice Stablecoin
     /// Return how much STABLECOIN does user receive for AMOUNT of WETH
@@ -146,7 +153,7 @@ contract StableVault is ERC20, IERC4626 {
     /// @notice Stablecoin
     /// Return how much WETH to transfer by calculating equivalent amount of burn to given AMOUNT of WETH
     function previewWithdraw(uint256 amount) public view override returns (uint256 wethOut) {
-        return (getLatestPrice() / 1e8) * amount; // AMOUNT / (ETH/USD)
+        return (getLatestPrice() / 1e8) * amount; // AMOUNT * (ETH/USD)
     }
 
     /// @notice Stablecoin
@@ -172,10 +179,6 @@ contract StableVault is ERC20, IERC4626 {
     }
 
     function assetsOf(address user) public view override returns (uint256) {
-        return balanceOf[user];
-    }
-
-    function stableAssetsOf(address user) public view returns (uint256) {
         return balanceOf[user];
     }
 
