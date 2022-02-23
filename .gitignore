@@ -9,3 +9,5 @@ factories
 .vscode
 typechain
 README_dev.md
+
+bin

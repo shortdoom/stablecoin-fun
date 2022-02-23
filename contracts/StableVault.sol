@@ -18,7 +18,7 @@ import "./interfaces/IWETH9.sol";
 contract StableVault is ERC20, IERC4626 {
     using SafeTransferLib for ERC20;
 
-    uint256 public constant depositFee = 100; // 0.5% 
+    uint256 public constant depositFee = 100; // 0.1% 
     uint256 public constant withdrawFee = 9500; // 99.5%
     uint256 public constant maxFloatFee = 10000; // 100%
 
@@ -98,7 +98,7 @@ contract StableVault is ERC20, IERC4626 {
     }
 
     /// @notice Volatility/Funding token
-    /// Redeem number of SHARES (VolToken) for WETH as current price (at loss or profit)
+    /// Redeem number of SHARES (VolToken) for WETH at current price (at loss or profit) + fees accrued
     function defund(
         uint256 volCoinAmount,
         address to,
